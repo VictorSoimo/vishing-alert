@@ -2,6 +2,11 @@
 .gradle/
 build/
 
+# Gradle wrapper (can be checked in for reproducible builds, but excluding for now)
+gradle/
+gradlew
+gradlew.bat
+
 # Local configuration file (sdk path, etc)
 local.properties
 
