@@ -10,6 +10,18 @@ data class FraudAnalysisResult(
     val transcribedText: String = ""
 )
 
+data class WordDetail(
+    val conf: Double,
+    val end: Double,
+    val start: Double,
+    val word: String
+)
+
+data class VoskResult(
+    val text: String,
+    val result: List<WordDetail>?
+)
+
 /**
  * Enum class for different types of fraud indicators
  */

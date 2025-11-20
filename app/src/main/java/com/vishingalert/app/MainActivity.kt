@@ -1,188 +1,118 @@
 package com.vishingalert.app
 
-import android.content.Intent
+import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import com.google.android.material.button.MaterialButton
-import com.google.android.material.card.MaterialCardView
-import com.vishingalert.app.service.CallMonitoringService
-import com.vishingalert.app.util.PermissionUtil
-import com.vishingalert.app.util.PreferenceManager
+import android.widget.Button
+import android.widget.ScrollView
 import android.widget.TextView
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.vishingalert.app.service.CallProcessingService
+import kotlinx.coroutines.launch
 
-/**
- * Main Activity - Entry point of the application
- */
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var preferenceManager: PreferenceManager
-    private lateinit var statusTextView: TextView
-    private lateinit var toggleButton: MaterialButton
-    private lateinit var callsMonitoredTextView: TextView
-    private lateinit var threatsDetectedTextView: TextView
-    private lateinit var lastScanTextView: TextView
+    private lateinit var callService: CallProcessingService
+    private lateinit var startButton: Button
+    private lateinit var stopButton: Button
+    private lateinit var logsButton: Button
+    private lateinit var logOutput: TextView
 
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val allGranted = permissions.entries.all { it.value }
-        if (allGranted) {
-            Toast.makeText(this, "All permissions granted", Toast.LENGTH_SHORT).show()
-            updateUI()
-        } else {
-            Toast.makeText(this, "Some permissions denied", Toast.LENGTH_SHORT).show()
-            showPermissionExplanation()
-        }
+    companion object {
+        private const val PERMISSION_REQUEST_CODE = 100
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        preferenceManager = PreferenceManager(this)
+        initializeUI()
+        callService = CallProcessingService(this)
 
-        initializeViews()
-        setupListeners()
-        updateUI()
+        requestPermissions()
+    }
 
-        // Show permission dialog on first launch
-        if (preferenceManager.isFirstLaunch) {
-            showPermissionExplanation()
-            preferenceManager.isFirstLaunch = false
+    private fun initializeUI() {
+        startButton = findViewById(R.id.start_button)
+        stopButton = findViewById(R.id.stop_button)
+        logsButton = findViewById(R.id.logs_button)
+        logOutput = findViewById(R.id.log_output)
+
+        startButton.setOnClickListener {
+            startCall()
+        }
+
+        stopButton.setOnClickListener {
+            stopCall()
+        }
+
+        logsButton.setOnClickListener {
+            displayLogs()
         }
     }
 
-    private fun initializeViews() {
-        statusTextView = findViewById(R.id.statusTextView)
-        toggleButton = findViewById(R.id.toggleMonitoringButton)
-        callsMonitoredTextView = findViewById(R.id.callsMonitoredTextView)
-        threatsDetectedTextView = findViewById(R.id.threatsDetectedTextView)
-        lastScanTextView = findViewById(R.id.lastScanTextView)
-    }
+    private fun startCall() {
+        lifecycleScope.launch {
+            // Replace with your actual Twilio token and room details
+            val token = "YOUR_TWILIO_TOKEN"
+            val roomName = "test-room"
+            val participantName = "test-participant"
 
-    private fun setupListeners() {
-        toggleButton.setOnClickListener {
-            if (preferenceManager.isMonitoringEnabled) {
-                stopMonitoring()
-            } else {
-                if (PermissionUtil.areAllPermissionsGranted(this)) {
-                    startMonitoring()
-                } else {
-                    requestPermissions()
-                }
-            }
+            callService.startCallProcessing(token, roomName, participantName)
         }
     }
 
-    private fun updateUI() {
-        val isMonitoring = preferenceManager.isMonitoringEnabled
-
-        statusTextView.text = if (isMonitoring) {
-            getString(R.string.monitoring_active)
-        } else {
-            getString(R.string.monitoring_inactive)
-        }
-
-        statusTextView.setTextColor(
-            ContextCompat.getColor(
-                this,
-                if (isMonitoring) R.color.success else R.color.text_secondary
-            )
-        )
-
-        toggleButton.text = if (isMonitoring) {
-            getString(R.string.disable_monitoring)
-        } else {
-            getString(R.string.enable_monitoring)
-        }
-
-        // Update statistics
-        callsMonitoredTextView.text = getString(
-            R.string.calls_monitored,
-            preferenceManager.callsMonitored
-        )
-
-        threatsDetectedTextView.text = getString(
-            R.string.threats_detected,
-            preferenceManager.threatsDetected
-        )
-
-        val lastScanTime = preferenceManager.lastScanTime
-        lastScanTextView.text = if (lastScanTime > 0) {
-            val dateFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
-            getString(R.string.last_scan, dateFormat.format(Date(lastScanTime)))
-        } else {
-            getString(R.string.last_scan, "Never")
+    private fun stopCall() {
+        lifecycleScope.launch {
+            callService.stopCallProcessing()
         }
     }
 
-    private fun startMonitoring() {
-        if (!PermissionUtil.areAllPermissionsGranted(this)) {
-            Toast.makeText(this, "Please grant all permissions first", Toast.LENGTH_SHORT).show()
-            return
-        }
+    private fun displayLogs() {
+        val log = callService.getThreatLog()
+        val stats = callService.getStatistics()
 
-        // Start the monitoring service
-        val serviceIntent = Intent(this, CallMonitoringService::class.java).apply {
-            action = CallMonitoringService.ACTION_START_MONITORING
-        }
-        startForegroundService(serviceIntent)
+        logOutput.text = """
+            === THREAT LOG ===
+            $log
 
-        preferenceManager.isMonitoringEnabled = true
-        preferenceManager.lastScanTime = System.currentTimeMillis()
-
-        Toast.makeText(this, "Monitoring started", Toast.LENGTH_SHORT).show()
-        updateUI()
-    }
-
-    private fun stopMonitoring() {
-        // Stop the monitoring service
-        val serviceIntent = Intent(this, CallMonitoringService::class.java).apply {
-            action = CallMonitoringService.ACTION_STOP_MONITORING
-        }
-        startService(serviceIntent)
-
-        preferenceManager.isMonitoringEnabled = false
-
-        Toast.makeText(this, "Monitoring stopped", Toast.LENGTH_SHORT).show()
-        updateUI()
+            === STATISTICS ===
+            Calls Monitored: ${stats["calls_monitored"]}
+            Threats Detected: ${stats["threats_detected"]}
+        """.trimIndent()
     }
 
     private fun requestPermissions() {
-        val missingPermissions = PermissionUtil.getMissingPermissions(this)
+        val permissions = arrayOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.INTERNET,
+            Manifest.permission.VIBRATE
+        )
+
+        val missingPermissions = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }.toTypedArray()
+
         if (missingPermissions.isNotEmpty()) {
-            permissionLauncher.launch(missingPermissions.toTypedArray())
+            ActivityCompat.requestPermissions(this, missingPermissions, PERMISSION_REQUEST_CODE)
         }
     }
 
-    private fun showPermissionExplanation() {
-        val missingPermissions = PermissionUtil.getMissingPermissions(this)
-        if (missingPermissions.isEmpty()) return
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
-        val permissionList = missingPermissions.joinToString("\n") { permission ->
-            "• ${PermissionUtil.getPermissionDisplayName(permission)}"
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.permissions_required))
-            .setMessage("${getString(R.string.permissions_message)}\n\nRequired permissions:\n$permissionList")
-            .setPositiveButton(getString(R.string.grant_permissions)) { _, _ ->
-                requestPermissions()
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            val allGranted = grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            if (!allGranted) {
+                logOutput.text = "Some permissions were denied"
             }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        updateUI()
+        }
     }
 }
