@@ -1,0 +1,111 @@
+### Project Analysis
+The GuardianShield pitch deck outlines a privacy-focused mobile app for detecting SMS (smishing) and call-based (vishing) fraud using on-device ML processing. Key innovations include fully on-device NLP/STT for real-time analysis, hashing for anonymized community reporting, and avoidance of cloud dependencies to comply with GDPR/CCPA. The prototype focus is on the core vishing detection: capturing live call audio on Android, converting it to text via on-device STT, and applying NLP to flag fraud indicators (e.g., urgent requests for personal info, phishing cues like "verify your account").
+
+Challenges from research:
+- Direct call audio capture (both sides) is restricted on modern Android (API 29+). VOICE_CALL audio source requires system-level permissions (CAPTURE_AUDIO_OUTPUT), unavailable to user apps without root. Workaround: Use an Accessibility Service to enable background audio recording during calls, as seen in apps like Cube ACR or open-source recorders. This requires user opt-in via Settings > Accessibility.
+- On-device STT: Feasible with TensorFlow Lite (TFLite) ports of Whisper (tiny.en model recommended for efficiency, ~40MB size, supports multilingual but focus on English for prototype).
+- NLP: Start with rule-based keyword detection (e.g., scanning for "password," "bank," "urgent") for speed; evolve to a simple TFLite text classifier trained on spam/fraud datasets (e.g., via Model Maker).
+- Timeline: 1 month (4 weeks) is tight for a working prototype. Assume solo developer with Android Studio/Kotlin experience. Prioritize call detection over SMS for MVP. Test on physical device (emulators lack real call simulation).
+- Resources: Android Studio 2024+, TFLite libraries, sample datasets (e.g., open scam transcripts from Kaggle or GitHub). No cloud needed for prototype.
+
+### Workplan
+Divided into 4 weeks with actionable tasks. Each task includes estimated time (assuming 40-hour weeks), dependencies, and deliverables. Total: ~160 hours. Use Agile-style: Weekly milestones with testing. Track progress in Git.
+
+#### Week 1: Setup and Call Monitoring Foundation (Focus: Environment & Permissions)
+- **Task 1.1: Set up Android Studio project (2-4 hours)**  
+  Create a new Kotlin-based project targeting Android API 30+ (for modern permissions). Add dependencies: TFLite (org.tensorflow:tensorflow-lite:2.15.0), TFLite Support (org.tensorflow:tensorflow-lite-support:0.4.4), and AndroidX libraries (e.g., androidx.core:core-ktx:1.13.1). Configure minSDK 24 (Android 7.0+ for broad compatibility).  
+  *Deliverable:* Basic app skeleton with MainActivity.
+
+- **Task 1.2: Implement permissions handling (4-6 hours)**  
+  Request runtime permissions: RECORD_AUDIO, READ_PHONE_STATE, FOREGROUND_SERVICE, POST_NOTIFICATIONS. Use ActivityResultLauncher for clean handling. Add rationale dialogs (e.g., "Needed for call monitoring"). For Accessibility, guide user to enable service in Settings.  
+  *Dependencies:* Android Manifest updates (<uses-permission android:name="android.permission.RECORD_AUDIO"/> etc.).  
+  *Deliverable:* Permission flow; app crashes gracefully if denied.
+
+- **Task 1.3: Monitor phone state for calls (6-8 hours)**  
+  Use TelephonyManager to listen for call states (registerPhoneStateListener). Detect OFFHOOK (active call) to trigger recording. Handle incoming/outgoing via EXTRA_STATE.  
+  *Dependencies:* READ_PHONE_STATE permission.  
+  *Deliverable:* Log call start/end in app; basic UI button to simulate (for testing without real calls).
+
+- **Task 1.4: Implement Accessibility Service for audio capture (10-12 hours)**  
+  Create an AccessibilityService subclass. In onAccessibilityEvent, check for call-related events (e.g., window changes for Phone app). Configure service in Manifest (<accessibility-service> with android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"). Use MediaRecorder in service: setAudioSource(AudioSource.MIC), setOutputFormat(MP4), start recording on call detect. Note: This captures via speaker/mic; test for both-side audio (works on most devices post-Android 10 with accessibility enabled).  
+  *Dependencies:* User must enable service manually. Reference open-source like axet/android-call-recorder.  
+  *Deliverable:* Service records audio during simulated calls (e.g., play test audio); save to file.
+
+- **Task 1.5: Basic testing and milestone (4-6 hours)**  
+  Test on physical device: Grant permissions, enable accessibility, make test call, verify audio file creation. Fix bugs (e.g., service binding).  
+  *Milestone:* App detects calls and records raw audio locally.
+
+#### Week 2: Audio Streaming and Segmentation (Focus: Real-Time Capture)
+- **Task 2.1: Stream audio in chunks (8-10 hours)**  
+  Modify Accessibility Service to segment audio into ~30-second buffers (as per deck flowchart). Use AudioRecord for lower-level streaming (sample rate 16kHz, mono, PCM_16BIT). Buffer in ByteArray and process in real-time threads. Avoid blocking UI.  
+  *Dependencies:* Week 1 audio capture.  
+  *Deliverable:* Audio chunks saved/processed during active call.
+
+- **Task 2.2: Preprocess audio for STT (6-8 hours)**  
+  Convert chunks to Mel spectrograms (use TFLite Support's AudioProcessor or manual with FFT). Resample to 16kHz if needed. Handle noise reduction minimally (e.g., simple filtering).  
+  *Dependencies:* Add audio libs (e.g., androidx.media3).  
+  *Deliverable:* Preprocessed audio ready for model input.
+
+- **Task 2.3: Integrate background service management (4-6 hours)**  
+  Use ForegroundService to keep app alive during calls (show notification: "Monitoring call"). Bind service to Activity for control.  
+  *Deliverable:* App runs in background without killing.
+
+- **Task 2.4: Error handling and user prompts (4-6 hours)**  
+  Add prompts for accessibility enablement. Handle failures (e.g., "Can't access audio" toast). Log events (timestamp, call ID).  
+  *Deliverable:* Robust error flow.
+
+- **Task 2.5: Testing milestone (4-6 hours)**  
+  Test real calls: Capture streams, verify chunks. Use emulator for basics, physical for audio.  
+  *Milestone:* Real-time audio streaming during calls, with segments.
+
+#### Week 3: On-Device STT Integration (Focus: Speech-to-Text)
+- **Task 3.1: Download and integrate Whisper TFLite model (4-6 hours)**  
+  Use Whisper tiny.en TFLite model (from GitHub repos like nyadla-sys/whisper.tflite). Add to assets folder. Load via InterpreterApi.  
+  *Dependencies:* TFLite setup from Week 1.  
+  *Deliverable:* Model loads without errors.
+
+- **Task 3.2: Implement STT on audio chunks (10-12 hours)**  
+  Feed preprocessed Mel spectrograms to Whisper model. Run inference in a background thread (use TaskRunner for efficiency). Output transcript (focus on English; handle multilingual if time). Process chunks sequentially for continuous transcription.  
+  *Dependencies:* Week 2 preprocessing. Reference guides like vilassn/whisper_android.  
+  *Deliverable:* Transcribe test audio files to text.
+
+- **Task 3.3: Optimize for on-device performance (6-8 hours)**  
+  Use NNAPI delegate for hardware acceleration. Test latency (<5s per chunk). Reduce model size if needed (quantize).  
+  *Deliverable:* Low-resource STT (monitor CPU/battery).
+
+- **Task 3.4: Integrate STT into call flow (4-6 hours)**  
+  Trigger STT on each audio chunk during active call. Append transcripts.  
+  *Deliverable:* Live transcription during calls.
+
+- **Task 3.5: Testing milestone (4-6 hours)**  
+  Test with scam simulation audio (e.g., play vishing scripts). Verify accuracy.  
+  *Milestone:* App captures call, converts to text on-device.
+
+#### Week 4: NLP Fraud Detection and Polish (Focus: Analysis & Alerts)
+- **Task 4.1: Implement basic NLP for fraud indicators (6-8 hours)**  
+  Use rule-based: Scan transcript for keywords/phrases (e.g., "send money," "account number," "verify PIN" – compile 50+ from common vishing tactics). Score based on matches (threshold for alert).  
+  *Dependencies:* Week 3 transcripts.  
+  *Deliverable:* Simple detector flags test texts.
+
+- **Task 4.2: Advance to TFLite NLP model (8-10 hours)**  
+  Train a text classifier with TFLite Model Maker: Use dataset (e.g., SMS spam from Kaggle, adapt for vishing transcripts). Input: CSV with labeled scam/non-scam texts. Export TFLite model, integrate for inference on transcripts.  
+  *Dependencies:* Python script for training (run locally, then import to app).  
+  *Deliverable:* ML-based fraud probability score.
+
+- **Task 4.3: User alerts and reporting (4-6 hours)**  
+  On fraud detect: Show overlay notification (use WindowManager for in-call alert) with "Potential scam!" + reasoning. Allow user to flag/report (hash number with SHA-256, log locally for prototype).  
+  *Deliverable:* Visual/audio warnings (vibrate + toast).
+
+- **Task 4.4: UI and privacy tweaks (4-6 hours)**  
+  Add simple app UI: Settings for opt-ins, history log. Ensure no data leaves device.  
+  *Deliverable:* Intuitive prototype app.
+
+- **Task 4.5: Final testing and iteration (6-8 hours)**  
+  End-to-end tests: Real calls with scripts. Fix false positives (e.g., tune thresholds). Battery/performance checks.  
+  *Milestone:* Working prototype: Detects fraud in live calls via STT+NLP.
+
+### Next Steps & Recommendations
+- **Tools/Resources:** Git for version control; Android Profiler for optimization; Sample code from GitHub (e.g., whisper_android, call recorder repos).
+- **Risks/Mitigations:** Audio quality varies by device – test on multiple (e.g., Pixel, Samsung). If accessibility workaround fails, fallback to mic-only (user must use speakerphone). For full product, add SMS detection (similar NLP on BroadcastReceiver for SMS).
+- **Extensions if Time Allows:** Community hashing upload (to mock cloud), adaptive retraining (federated learning stub).
+This plan gets a functional MVP in 1 month; iterate based on tests.

@@ -1,0 +1,773 @@
+# GuardianShield Prototype - 1 Month Development Workplan
+
+## 🎯 Revised Prototype Goals (With Speakerphone Workaround)
+
+**Primary Focus:** SMS Fraud Detection + REAL Vishing Detection via Speakerphone
+- **SMS Detection:** Fully functional on-device NLP for smishing detection
+- **Call Screening:** Implement CallScreeningService for caller identification
+- **LIVE Vishing Detection:** Real-time call analysis when speakerphone is enabled
+  - Automatic speakerphone activation option
+  - Live audio recording via microphone
+  - Real-time speech-to-text transcription
+  - Fraud indicator detection during active calls
+  - Visual alerts without interrupting call
+
+**Why this approach:**
+- Speakerphone audio CAN be captured via microphone (AudioSource.MIC)
+- Demonstrates full end-to-end vishing protection capability
+- Real, working feature (not just simulation)
+- Privacy-preserving (all processing on-device)
+- Honest about limitations (requires speakerphone)
+
+---
+
+## 📅 Week-by-Week Timeline
+
+### **WEEK 1: Foundation & Environment Setup**
+**Days 1-2: Project Setup & Research**
+- [ ] Install Android Studio (latest stable version - Hedgehog or newer)
+- [ ] Set up Git repository for version control
+- [ ] Create new Android project (Kotlin, Min SDK 29, Target SDK 34)
+- [ ] Research and document Android permissions needed:
+  - `READ_SMS`, `RECEIVE_SMS` for SMS scanning
+  - `READ_PHONE_STATE`, `READ_CALL_LOG` for call info
+  - `CALL_SCREENING_ROLE` for call screening
+  - `FOREGROUND_SERVICE` for background processing
+  - `INTERNET` (only for optional hashed database sync)
+
+**Days 3-5: Core Architecture Design**
+- [ ] Design app architecture (MVVM pattern recommended):
+  ```
+  app/
+  ├── data/
+  │   ├── models/ (SMS, Call data classes)
+  │   ├── repository/ (Data access layer)
+  │   └── local/ (Room database for fraud reports)
+  ├── domain/
+  │   ├── usecases/ (Fraud detection logic)
+  │   └── models/ (Domain entities)
+  ├── ml/
+  │   ├── sms/ (SMS NLP processor)
+  │   ├── audio/ (Speech-to-text + NLP)
+  │   └── models/ (TFLite model files)
+  ├── services/
+  │   ├── SmsReceiver (BroadcastReceiver)
+  │   ├── CallScreeningService
+  │   └── ForegroundService
+  └── ui/
+      ├── main/ (MainActivity)
+      ├── alerts/ (Alert screens)
+      └── settings/
+  ```
+- [ ] Set up Room database schema for storing:
+  - Reported phone numbers (hashed)
+  - Detected fraud attempts
+  - User alert history
+- [ ] Create basic UI wireframes (Figma/paper)
+
+**Days 6-7: Dependencies & Libraries**
+- [ ] Add Gradle dependencies:
+  ```kotlin
+  // TensorFlow Lite for on-device ML
+  implementation 'org.tensorflow:tensorflow-lite:2.14.0'
+  implementation 'org.tensorflow:tensorflow-lite-support:0.4.4'
+  
+  // NLP & Text Processing
+  implementation 'org.apache.commons:commons-text:1.11.0'
+  
+  // Room Database
+  implementation 'androidx.room:room-runtime:2.6.1'
+  kapt 'androidx.room:room-compiler:2.6.1'
+  
+  // Coroutines for async operations
+  implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
+  
+  // ViewModel & LiveData
+  implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'
+  implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.7.0'
+  ```
+- [ ] Test TFLite integration with a sample model
+- [ ] Configure build.gradle for ML model assets
+
+---
+
+### **WEEK 2: SMS Fraud Detection (Core Feature)**
+
+**Days 8-10: SMS Receiver & Basic NLP**
+- [ ] Implement `SmsReceiver` BroadcastReceiver:
+  ```kotlin
+  class SmsReceiver : BroadcastReceiver() {
+      override fun onReceive(context: Context, intent: Intent) {
+          // Extract SMS messages
+          // Pass to fraud detection service
+          // Show alert if fraud detected
+      }
+  }
+  ```
+- [ ] Register receiver in AndroidManifest.xml with SMS permissions
+- [ ] Create basic rule-based fraud detection:
+  - **Urgency keywords:** "urgent", "immediately", "expire", "suspend", "verify now", "act fast"
+  - **Money keywords:** "refund", "prize", "won", "claim", "payment", "bank", "account"
+  - **Action keywords:** "click here", "verify", "confirm", "update", "link", "login"
+  - **Suspicious patterns:** 
+    - URLs with IP addresses instead of domains
+    - Shortened URLs (bit.ly, tinyurl)
+    - Misspelled brand names
+    - Requests for OTP/PIN
+- [ ] Implement scoring system (0-100 fraud probability)
+- [ ] Test with real SMS samples
+
+**Days 11-12: On-Device NLP Model**
+- [ ] Research lightweight NLP approaches:
+  - Option A: TF-IDF + Naive Bayes (simplest, fastest)
+  - Option B: Pre-trained TFLite text classification model
+  - Option C: BERT-tiny for text classification
+- [ ] **Recommended:** Start with TF-IDF + rule-based hybrid:
+  ```kotlin
+  class SmsFraudDetector {
+      private val fraudKeywords = loadKeywordDatabase()
+      private val tfidfVectorizer = loadTFIDFModel()
+      
+      fun analyzeSms(message: String): FraudResult {
+          val keywordScore = checkKeywords(message)
+          val mlScore = runTFIDFClassification(message)
+          val urlScore = analyzeUrls(extractUrls(message))
+          
+          return FraudResult(
+              score = combineScores(keywordScore, mlScore, urlScore),
+              indicators = identifiedIndicators,
+              confidence = calculateConfidence()
+          )
+      }
+  }
+  ```
+- [ ] Create training dataset (collect phishing SMS examples from PhishTank, public datasets)
+- [ ] Train simple TFLite model using TensorFlow Lite Model Maker
+- [ ] Integrate model into app assets
+- [ ] Benchmark inference time (target: <100ms per SMS)
+
+**Days 13-14: SMS Detection UI & Alerts**
+- [ ] Create alert dialog/notification for detected fraud SMS
+- [ ] Implement in-app SMS history view showing:
+  - All scanned messages
+  - Fraud score
+  - Detected indicators
+- [ ] Add user feedback buttons (Report False Positive/Negative)
+- [ ] Implement local database storage for SMS analysis results
+- [ ] Test end-to-end SMS detection flow
+
+---
+
+### **WEEK 3: Call Screening & Audio Processing Foundation**
+
+**Days 15-17: CallScreeningService Implementation**
+- [ ] Implement `CallScreeningService`:
+  ```kotlin
+  class GuardianCallScreeningService : CallScreeningService() {
+      override fun onScreenCall(callDetails: Call.Details) {
+          val phoneNumber = callDetails.handle.toString()
+          val hashedNumber = hashPhoneNumber(phoneNumber)
+          
+          // Check against local fraud database
+          val isSuspicious = checkFraudDatabase(hashedNumber)
+          
+          // Show caller ID overlay with risk indicator
+          if (isSuspicious) {
+              showFraudWarning(phoneNumber)
+          }
+          
+          // Respond to system
+          respondToCall(callDetails, buildCallResponse(isSuspicious))
+      }
+  }
+  ```
+- [ ] Register service in AndroidManifest
+- [ ] Request `CALL_SCREENING_ROLE` permission
+- [ ] Implement caller ID overlay using `WindowManager` (TYPE_APPLICATION_OVERLAY)
+- [ ] Test with incoming calls
+
+**Days 18-20: Live Call Recording via Speakerphone**
+- [ ] Implement call state monitoring:
+  ```kotlin
+  class CallStateListener : PhoneStateListener() {
+      override fun onCallStateChanged(state: Int, phoneNumber: String?) {
+          when (state) {
+              TelephonyManager.CALL_STATE_RINGING -> {
+                  // Incoming call detected
+                  prepareForRecording(phoneNumber)
+              }
+              TelephonyManager.CALL_STATE_OFFHOOK -> {
+                  // Call answered
+                  if (userEnabledProtection) {
+                      startVishingDetection()
+                  }
+              }
+              TelephonyManager.CALL_STATE_IDLE -> {
+                  // Call ended
+                  stopRecordingAndAnalyze()
+              }
+          }
+      }
+  }
+  ```
+- [ ] Implement speakerphone auto-activation:
+  ```kotlin
+  class CallAudioManager {
+      fun enableSpeakerphone() {
+          audioManager.mode = AudioManager.MODE_IN_CALL
+          audioManager.isSpeakerphoneOn = true
+          // Show persistent notification: "GuardianShield Active - Speakerphone Required"
+      }
+      
+      fun startRecording(): AudioRecord {
+          val bufferSize = AudioRecord.getMinBufferSize(
+              16000, // 16kHz sample rate (good for speech)
+              AudioFormat.CHANNEL_IN_MONO,
+              AudioFormat.ENCODING_PCM_16BIT
+          )
+          
+          return AudioRecord(
+              MediaRecorder.AudioSource.MIC, // Captures speakerphone audio
+              16000,
+              AudioFormat.CHANNEL_IN_MONO,
+              AudioFormat.ENCODING_PCM_16BIT,
+              bufferSize
+          ).apply { startRecording() }
+      }
+  }
+  ```
+- [ ] Create foreground service for call monitoring:
+  ```kotlin
+  class VishingDetectionService : Service() {
+      private lateinit var audioRecord: AudioRecord
+      private var isRecording = false
+      
+      override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+          showForegroundNotification("Monitoring call for fraud...")
+          startCallMonitoring()
+          return START_STICKY
+      }
+      
+      private fun startCallMonitoring() {
+          isRecording = true
+          audioRecord = callAudioManager.startRecording()
+          
+          // Process audio in chunks
+          thread {
+              val buffer = ShortArray(1024)
+              while (isRecording) {
+                  val read = audioRecord.read(buffer, 0, buffer.size)
+                  if (read > 0) {
+                      processAudioChunk(buffer)
+                  }
+              }
+          }
+      }
+  }
+  ```
+- [ ] Add prominent UI indicators:
+  - Floating bubble showing "PROTECTED" status
+  - Recording indicator (red dot)
+  - Live transcript preview (optional)
+- [ ] Test with real phone calls on speakerphone
+- [ ] Measure battery impact and optimize
+
+**Days 21-22: Real-Time Speech-to-Text**
+- [ ] Integrate Vosk for offline STT:
+  ```kotlin
+  class RealtimeTranscriber {
+      private lateinit var model: Model
+      private lateinit var recognizer: Recognizer
+      private val transcriptBuffer = StringBuilder()
+      
+      fun initialize(context: Context) {
+          // Extract model from assets (download vosk-model-small-en-us-0.15.zip)
+          val modelPath = extractModel(context)
+          model = Model(modelPath)
+          recognizer = Recognizer(model, 16000.0f) // Match recording sample rate
+          recognizer.setMaxAlternatives(0)
+          recognizer.setWords(true)
+      }
+      
+      fun processAudioChunk(audioData: ShortArray): String? {
+          // Convert short array to byte array
+          val bytes = ByteArray(audioData.size * 2)
+          ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+              .asShortBuffer().put(audioData)
+          
+          if (recognizer.acceptWaveForm(bytes, bytes.size)) {
+              val result = recognizer.result
+              val text = parseResult(result)
+              transcriptBuffer.append(text).append(" ")
+              return text
+          }
+          return null
+      }
+      
+      fun finalize(): String {
+          val finalResult = recognizer.finalResult
+          return transcriptBuffer.toString()
+      }
+  }
+  ```
+- [ ] Implement buffered transcription (process 3-second chunks)
+- [ ] Add transcript display overlay (optional, can be distracting)
+- [ ] Handle transcription errors gracefully
+- [ ] Test transcription accuracy:
+  - Clear speech: target >85% accuracy
+  - Noisy environment: target >70% accuracy
+  - Multiple speakers: best effort
+
+**Days 23-24: Real-Time Vishing Detection**
+- [ ] Adapt SMS fraud detection for call transcripts with REAL-TIME analysis:
+  ```kotlin
+  class RealtimeVishingDetector {
+      private val detectionWindow = 30 // seconds
+      private val recentTranscript = CircularBuffer<String>(capacity = 100)
+      private var fraudScore = 0f
+      private val detectedIndicators = mutableSetOf<FraudIndicator>()
+      
+      fun analyzeTranscriptChunk(newText: String): DetectionResult {
+          recentTranscript.add(newText)
+          val contextWindow = recentTranscript.joinToString(" ")
+          
+          // Check for vishing indicators
+          val impersonationScore = detectImpersonation(contextWindow)
+          val pressureScore = detectPressureTactics(contextWindow)
+          val infoRequestScore = detectSensitiveInfoRequests(contextWindow)
+          val urgencyScore = detectUrgency(contextWindow)
+          
+          // Update rolling fraud score
+          fraudScore = calculateVishingScore(
+              impersonationScore,
+              pressureScore,
+              infoRequestScore,
+              urgencyScore
+          )
+          
+          // Trigger alert if threshold exceeded
+          if (fraudScore > 70) {
+              return DetectionResult(
+                  alertLevel = AlertLevel.HIGH,
+                  score = fraudScore,
+                  indicators = detectedIndicators.toList(),
+                  recommendation = "CAUTION: Possible fraud call. Do NOT share personal information."
+              )
+          }
+          
+          return DetectionResult.SAFE
+      }
+      
+      private fun detectImpersonation(text: String): Float {
+          val impersonators = listOf(
+              "IRS", "FBI", "Social Security", "Medicare",
+              "Microsoft", "Amazon", "Apple", "Google",
+              "Bank of", "Wells Fargo", "Chase", "PayPal",
+              "technical support", "customer service", "fraud department"
+          )
+          
+          var score = 0f
+          val lowerText = text.lowercase()
+          impersonators.forEach { entity ->
+              if (lowerText.contains(entity.lowercase())) {
+                  score += 25f
+                  detectedIndicators.add(FraudIndicator.IMPERSONATION)
+              }
+          }
+          return score.coerceAtMost(100f)
+      }
+      
+      private fun detectPressureTactics(text: String): Float {
+          val pressureWords = listOf(
+              "warrant", "arrest", "legal action", "lawsuit", "suspended",
+              "compromised", "hacked", "unauthorized", "fraudulent",
+              "immediate", "urgent", "right now", "within 24 hours",
+              "last chance", "final notice", "consequences"
+          )
+          
+          var score = 0f
+          val lowerText = text.lowercase()
+          pressureWords.forEach { word ->
+              if (lowerText.contains(word)) {
+                  score += 15f
+                  detectedIndicators.add(FraudIndicator.PRESSURE_TACTICS)
+              }
+          }
+          return score.coerceAtMost(100f)
+      }
+      
+      private fun detectSensitiveInfoRequests(text: String): Float {
+          val sensitiveRequests = listOf(
+              "social security number", "SSN", "credit card", "card number",
+              "CVV", "PIN", "password", "account number", "routing number",
+              "date of birth", "mother's maiden name", "verify your identity",
+              "confirm your", "provide your"
+          )
+          
+          var score = 0f
+          val lowerText = text.lowercase()
+          sensitiveRequests.forEach { request ->
+              if (lowerText.contains(request)) {
+                  score += 30f // High weight for info requests
+                  detectedIndicators.add(FraudIndicator.INFO_REQUEST)
+              }
+          }
+          return score.coerceAtMost(100f)
+      }
+  }
+  ```
+- [ ] Implement sliding window analysis (analyze last 30 seconds continuously)
+- [ ] Create visual alert system:
+  ```kotlin
+  class FraudAlertOverlay(context: Context) : FrameLayout(context) {
+      fun showWarning(result: DetectionResult) {
+          // Display floating alert without interrupting call
+          val params = WindowManager.LayoutParams(
+              WindowManager.LayoutParams.MATCH_PARENT,
+              WindowManager.LayoutParams.WRAP_CONTENT,
+              WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+              WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+              PixelFormat.TRANSLUCENT
+          )
+          
+          // Red banner at top of screen
+          setBackgroundColor(Color.parseColor("#FFE53935"))
+          // Show fraud score + indicators
+          // Vibrate phone
+          // Play warning sound
+      }
+  }
+  ```
+- [ ] Add vibration + sound alerts (configurable)
+- [ ] Test with simulated fraud call scenarios
+
+---
+
+### **WEEK 4: Integration, Testing & Demo Preparation**
+
+**Days 22-23: Hash-Based Fraud Reporting**
+- [ ] Implement SHA-256 hashing for phone numbers:
+  ```kotlin
+  fun hashPhoneNumber(number: String): String {
+      val normalized = normalizePhoneNumber(number) // Remove +, spaces, etc.
+      val digest = MessageDigest.getInstance("SHA-256")
+      return digest.digest(normalized.toByteArray()).toHex()
+  }
+  ```
+- [ ] Create local Room database for reported numbers:
+  ```kotlin
+  @Entity
+  data class FraudReport(
+      @PrimaryKey val hashedNumber: String,
+      val reportCount: Int,
+      val lastReported: Long,
+      val fraudType: String // SMS, CALL, BOTH
+  )
+  ```
+- [ ] Implement "Report Fraud" button in call/SMS screens
+- [ ] Add community reporting feature (stores locally for prototype)
+- [ ] *Optional:* Create simple backend API for shared reports (if time permits)
+
+**Days 24-25: UI Polish & User Experience**
+- [ ] Design main dashboard showing:
+  - Protection status (ON/OFF toggle for call monitoring)
+  - **Important notice:** "Requires speakerphone for call protection"
+  - Statistics (SMS scanned, calls monitored, frauds detected)
+  - Recent alerts
+  - Battery usage indicator
+- [ ] Create onboarding flow explaining:
+  - Permissions needed and why
+  - **Speakerphone requirement** for vishing detection
+  - Privacy considerations (use in private spaces)
+  - How fraud detection works
+  - Privacy guarantees (all on-device)
+- [ ] Implement call monitoring UI:
+  - Floating bubble during calls showing:
+    - "Protected" status with checkmark
+    - Real-time fraud score (0-100)
+    - Number of indicators detected
+    - "Tap for details" option
+  - Dismiss/pause button
+- [ ] Add settings screen:
+  - Detection sensitivity slider
+  - Enable/disable SMS/Call screening
+  - Auto-enable speakerphone (ON by default)
+  - Notification preferences
+  - Recording history
+  - Clear history
+- [ ] Add Material Design 3 theming
+- [ ] Implement dark mode support
+- [ ] **Add prominent disclaimer:** 
+  - "Call monitoring requires speakerphone"
+  - "Use in private spaces only"
+  - "Recording indicator always visible"
+
+**Days 26-27: Testing & Bug Fixes**
+- [ ] Unit tests for fraud detection algorithms:
+  ```kotlin
+  @Test
+  fun `detects urgent action phishing SMS`() {
+      val sms = "URGENT: Your account will be suspended. Click here to verify immediately."
+      val result = detector.analyzeSms(sms)
+      assertTrue(result.score > 70)
+      assertTrue(result.indicators.contains(FraudIndicator.URGENCY))
+  }
+  ```
+- [ ] Integration tests for SMS receiver and call screening
+- [ ] Manual testing:
+  - Send test SMS with fraud keywords
+  - Make test calls to trigger screening
+  - Test audio simulation mode
+- [ ] Performance testing:
+  - Memory usage
+  - Battery impact
+  - CPU usage during ML inference
+- [ ] Fix critical bugs and optimize performance
+
+**Days 28-30: Demo Preparation & Documentation**
+- [ ] Prepare demo scenarios:
+  1. **SMS Fraud Detection:** Receive phishing SMS → Alert shown → User marks as fraud
+  2. **Call Screening:** Incoming suspicious number → Warning overlay displayed
+  3. **LIVE Vishing Detection:** 
+     - Answer incoming call
+     - App activates speakerphone automatically
+     - Real-time transcription shown
+     - Fraud indicators appear as scammer speaks
+     - Alert triggered when threshold exceeded
+     - Show post-call analysis report
+  4. **Privacy Demo:** Show all data stays on device, explain hashing
+- [ ] Record demo video (5-7 minutes):
+  - Problem overview
+  - App installation and onboarding
+  - SMS detection demo
+  - **Live call protection demo** (staged call with script)
+  - Post-call fraud report
+  - Privacy features walkthrough
+- [ ] Create presentation slides covering:
+  - Problem statement
+  - Competitive analysis (Truecaller, DaisyAI comparison)
+  - **Technical approach** (emphasize on-device ML)
+  - **Speakerphone workaround** (honest about limitations)
+  - Architecture diagram
+  - Demo walkthrough
+  - Privacy features (on-device processing, hashing)
+  - Ethical considerations (speakerphone privacy)
+  - Performance metrics (battery, accuracy, latency)
+  - Future roadmap (hardware partnerships, iOS version)
+- [ ] Write README documentation:
+  - Setup instructions
+  - Architecture overview
+  - **Speakerphone requirement** clearly stated
+  - API documentation
+  - Known limitations
+  - Privacy policy
+  - Usage guidelines (when/where appropriate)
+- [ ] Prepare APK for distribution
+- [ ] Create user manual with screenshots
+- [ ] *Optional:* Deploy to Google Play internal testing track
+
+---
+
+## 🎯 Prototype Deliverables
+
+### Minimum Viable Product (MVP)
+1. ✅ **SMS Fraud Detection**
+   - Real-time scanning of incoming SMS
+   - On-device NLP analysis
+   - Alert system for high-risk messages
+   - Fraud indicator highlighting
+
+2. ✅ **Call Screening**
+   - CallScreeningService integration
+   - Hashed number database
+   - Caller ID overlay with risk indicator
+   - Manual fraud reporting
+
+3. ✅ **LIVE Vishing Detection** (Speakerphone Mode)
+   - Real-time call audio recording via microphone
+   - Automatic speakerphone activation
+   - Live speech-to-text transcription
+   - Real-time fraud indicator detection
+   - Visual alerts during active calls
+   - Post-call fraud analysis report
+   - **Requires user to enable speakerphone**
+
+4. ✅ **Privacy Features**
+   - All processing on-device
+   - SHA-256 hashing for phone numbers
+   - No data sent to external servers (by default)
+   - Clear privacy policy
+   - Transparent about speakerphone requirement
+
+### Nice-to-Have (If Time Permits)
+- [ ] Cloud-synced hashed fraud database
+- [ ] Community reporting with anonymization
+- [ ] Export fraud report history (audio + transcript + analysis)
+- [ ] Multi-language support
+- [ ] Adaptive ML model retraining
+- [ ] Post-call transcript review and editing
+- [ ] Integration with Truecaller/other databases
+- [ ] Voice activity detection (pause recording during silence)
+
+---
+
+## 🛠️ Technical Stack Summary
+
+| Component | Technology |
+|-----------|-----------|
+| **IDE** | Android Studio Hedgehog+ |
+| **Language** | Kotlin |
+| **Min SDK** | API 29 (Android 10) |
+| **Target SDK** | API 34 (Android 14) |
+| **Architecture** | MVVM + Repository Pattern |
+| **ML Framework** | TensorFlow Lite 2.14+ |
+| **STT** | Vosk (offline) / Android SpeechRecognizer |
+| **Database** | Room Persistence Library |
+| **Async** | Kotlin Coroutines + Flow |
+| **DI** | Hilt (optional) or manual |
+| **UI** | Jetpack Compose or XML layouts |
+
+---
+
+## ⚠️ Known Limitations & Workarounds
+
+### 1. **Speakerphone Requirement for Live Call Analysis**
+- **Issue:** Android blocks direct call audio access for third-party apps
+- **Workaround:** 
+  - Capture audio via microphone when speakerphone is enabled
+  - Both sides of conversation captured together
+  - Requires user to enable speakerphone (automatic or manual)
+  - **Trade-off:** Privacy reduced in public spaces, but fraud protection gained
+  - **Mitigation:** Clear warnings, user consent, private space recommendations
+
+### 2. **Audio Quality & Environment Noise**
+- **Issue:** Microphone captures ambient noise along with call audio
+- **Workaround:**
+  - Use noise suppression in AudioRecord (AudioSource.VOICE_RECOGNITION)
+  - Implement voice activity detection
+  - Require quiet environment for best results
+  - Provide audio quality indicator to user
+
+### 3. **Battery Consumption**
+- **Issue:** Continuous recording + STT + NLP is battery-intensive
+- **Workaround:**
+  - Optimize ML models for efficiency
+  - Use lightweight STT model
+  - Process audio in chunks, not continuously
+  - Allow user to disable real-time transcription (analysis only)
+  - Show battery usage prominently
+
+### 4. **Accessibility API Ban**
+- **Issue:** Google banned Accessibility API for call recording on Play Store
+- **Workaround:** 
+  - Don't use Accessibility APIs at all
+  - Use legitimate CallScreeningService + speakerphone approach
+  - Fully comply with Play Store policies
+  - Be transparent in app description
+
+### 5. **Model Size & Accuracy Trade-off**
+- **Issue:** On-device models must be small (<10MB) for quick inference
+- **Workaround:**
+  - Use lightweight models (Vosk-small, TF-IDF)
+  - Hybrid rule-based + ML approach
+  - Focus on high-precision rather than high-recall
+  - Allow model updates via app updates
+
+---
+
+## 📊 Success Metrics for Prototype
+
+- [ ] SMS fraud detection accuracy: >90%
+- [ ] False positive rate: <5%
+- [ ] SMS analysis latency: <100ms
+- [ ] Call screening response time: <2 seconds
+- [ ] **Live call transcription accuracy: >80% (clear speech), >65% (noisy)**
+- [ ] **Vishing detection latency: <5 seconds from keyword spoken**
+- [ ] **Real-time processing: Can analyze while recording**
+- [ ] App size: <80MB (including Vosk model)
+- [ ] Battery drain: <5% per hour during active call monitoring
+- [ ] Memory usage: <150MB during call
+- [ ] CPU usage: <40% during active transcription positive rate: <5%
+- [ ] SMS analysis latency: <100ms
+- [ ] Call screening response time: <2 seconds
+- [ ] Audio transcription accuracy: >85% (English)
+- [ ] App size: <50MB
+- [ ] Battery drain: <2% per hour of active use
+
+---
+
+## 🚀 Future Roadmap (Post-Prototype)
+
+1. **Advanced ML Models**
+   - Train custom BERT model on phishing dataset
+   - Implement federated learning for community improvements
+   - Add multi-language support
+
+2. **Enhanced Call Protection**
+   - Partner with telecom providers for direct integration
+   - Explore system-level permissions for select manufacturers
+   - Implement post-call analysis (manually uploaded recordings)
+
+3. **Community Features**
+   - Decentralized fraud reporting network
+   - Blockchain-based phone number reputation system
+   - API for third-party integrations
+
+4. **Platform Expansion**
+   - iOS version using CallKit framework
+   - Web extension for email phishing detection
+   - Desktop application for VoIP fraud detection
+
+---
+
+## 📚 Learning Resources
+
+### Android Development
+- [Android Developers: CallScreeningService](https://developer.android.com/reference/android/telecom/CallScreeningService)
+- [Android SMS/MMS Guide](https://developer.android.com/guide/topics/connectivity/sms)
+
+### Machine Learning
+- [TensorFlow Lite on Android](https://www.tensorflow.org/lite/android)
+- [TFLite Model Maker](https://www.tensorflow.org/lite/models/modify/model_maker)
+- [Phishing Detection Datasets](https://www.kaggle.com/datasets/shashwatwork/phishing-dataset-for-machine-learning)
+
+### Privacy & Security
+- [Android Security Best Practices](https://developer.android.com/topic/security/best-practices)
+- [GDPR Compliance for Apps](https://gdpr.eu/compliance/)
+- [Hashing Phone Numbers for Privacy](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html)
+
+---
+
+## 🎓 Team Roles (If Applicable)
+
+If working with partners, divide tasks:
+
+- **Brian Kiplagat:**
+  - Android UI/UX development
+  - CallScreeningService integration
+  - Testing & QA
+
+- **Victor Soimo:**
+  - ML model development & training
+  - NLP algorithm implementation
+  - Backend API (if time permits)
+
+- **Shared:**
+  - Architecture design
+  - Demo preparation
+  - Documentation
+
+---
+
+## ✅ Daily Check-ins
+
+Schedule 15-minute daily standups:
+1. What did I complete yesterday?
+2. What am I working on today?
+3. Any blockers?
+
+Use Trello/GitHub Projects to track progress.
+
+---
+
+**Good luck with your prototype! Focus on demonstrating the core technology (SMS detection + simulated vishing detection) rather than trying to overcome Android's fundamental limitations. The on-device NLP and privacy-first approach are your key differentiators.**

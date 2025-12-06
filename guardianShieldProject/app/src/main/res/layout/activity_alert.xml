@@ -1,0 +1,45 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp"
+    android:background="#D32F2F">
+
+    <!-- Main Warning Title -->
+    <TextView
+        android:id="@+id/warning_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🚨 IMMEDIATE ATTENTION REQUIRED 🚨"
+        android:textAlignment="center"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:textColor="#FFFFFF"
+        android:layout_marginBottom="40dp" />
+
+    <!-- Detailed Warning Message -->
+    <TextView
+        android:id="@+id/warning_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="!!! FRAUD DETECTED !!!\nHang Up The Phone Immediately.\nDO NOT SHARE ANY ACCOUNT, PERSONAL, OR SECURITY DATA."
+        android:textAlignment="center"
+        android:textSize="22sp"
+        android:textStyle="normal"
+        android:textColor="#FFEB3B"
+        android:layout_marginBottom="80dp" /> <!-- Bright Yellow for Contrast -->
+
+    <!-- Dismiss Button (Primary Action) -->
+    <Button
+        android:id="@+id/hang_up_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:backgroundTint="#4CAF50"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:padding="16dp"
+        android:text="I HAVE HUNG UP - DISMISS ALERT"
+        android:elevation="8dp" />
+
+</LinearLayout>
