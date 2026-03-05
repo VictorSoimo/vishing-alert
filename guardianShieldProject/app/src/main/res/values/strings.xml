@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Vishing Alert</string>
+    <string name="app_description">Privacy-focused fraud detection for calls and SMS</string>
+    <string name="monitoring_active">Monitoring Active</string>
+    <string name="monitoring_inactive">Monitoring Inactive</string>
+    <string name="enable_monitoring">Enable Monitoring</string>
+    <string name="disable_monitoring">Disable Monitoring</string>
+    <string name="permissions_required">Permissions Required</string>
+    <string name="permissions_message">This app requires phone and SMS permissions to detect fraud.</string>
+    <string name="grant_permissions">Grant Permissions</string>
+    <string name="fraud_detected">Potential Fraud Detected!</string>
+    <string name="fraud_alert_title">Vishing Alert</string>
+    <string name="fraud_indicators">Suspicious indicators found in call</string>
+    <string name="stats_title">Statistics</string>
+    <string name="calls_monitored">Calls Monitored: %d</string>
+    <string name="threats_detected">Threats Detected: %d</string>
+    <string name="last_scan">Last Scan: %s</string>
+    <string name="on_device_processing">All processing done on-device for privacy</string>
+    <string name="settings">Settings</string>
+    <string name="notification_channel_name">Fraud Detection</string>
+    <string name="notification_channel_description">Alerts for detected vishing and smishing attempts</string>
+</resources>
